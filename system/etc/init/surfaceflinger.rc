@@ -1,4 +1,4 @@
-service surfaceflinger /system/bin/surfaceflinger
+service surfaceflinger /system/vendor/bin/surfaceflinger
     class core
     user system
     group graphics drmrpc readproc

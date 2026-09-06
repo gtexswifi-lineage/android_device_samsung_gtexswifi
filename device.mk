@@ -28,7 +28,7 @@ MEDIA_CONFIGS := \
     frameworks/av/media/libstagefright/data/media_codecs_google_telephony.xml
 
 PRODUCT_COPY_FILES += \
-    $(foreach f,$(MEDIA_CONFIGS),$(f):system/etc/$(notdir $(f)))
+    $(foreach f,$(MEDIA_CONFIGS),$(f):$(TARGET_COPY_OUT_VENDOR)/etc/$(notdir $(f)))
 
 # GPS
 PRODUCT_COPY_FILES += \
@@ -54,7 +54,7 @@ SYSTEM_INIT_RC_FILES := \
 
 
 PRODUCT_COPY_FILES += \
-    $(foreach f,$(SYSTEM_INIT_RC_FILES),$(f):system/etc/init/$(notdir $(f)))
+    $(foreach f,$(SYSTEM_INIT_RC_FILES),$(f):system/vendor/etc/init/$(notdir $(f)))
 
 # Ramdisk
 PRODUCT_COPY_FILES += \
@@ -121,8 +121,6 @@ PRODUCT_PACKAGES += \
     memtrack.sc8830 \
     gralloc.sc8830 \
     libdither \
-    hwcomposer.sc8830 \
-    sprd_gsp.sc8830 \
     libmemoryheapion \
     libion_sprd \
     libgps_shim \
@@ -130,7 +128,6 @@ PRODUCT_PACKAGES += \
 
 PRODUCT_PACKAGES += \
     libhealthd.sc8830 \
-    power.sc8830
 
 # Usb accessory
 PRODUCT_PACKAGES += \
@@ -143,12 +140,49 @@ PRODUCT_PACKAGES += \
     libbt-vendor \
     libbluetooth_jni
 
+# HIDL (HAL Interface Definition Language)
+PRODUCT_PACKAGES += \
+	android.hardware.audio@2.0-impl \
+    android.hardware.audio@2.0-service \
+	android.hardware.audio.effect@2.0-impl \
+	android.hardware.bluetooth@1.0-impl \
+	android.hardware.bluetooth@1.0-service \
+	android.hardware.broadcastradio@1.0-impl \
+	android.hardware.configstore@1.0-impl \
+	android.hardware.graphics.allocator@2.0-impl \
+	android.hardware.graphics.mapper@2.0-impl \
+	android.hardware.gnss@1.0-impl \
+	android.hardware.keymaster@3.0-impl \
+	android.hardware.keymaster@3.0-service \
+	android.hardware.power@1.0-service.sc8830 \
+	android.hardware.light@2.0-impl \
+	android.hardware.memtrack@1.0-impl \
+	android.hardware.memtrack@1.0-service \
+	android.hardware.power@1.0-impl \
+	android.hardware.radio@1.0 \
+	android.hardware.radio.deprecated@1.0 \
+	android.hardware.renderscript@1.0-impl \
+	android.hardware.sensors@1.0-impl \
+	android.hardware.usb@1.0-service \
+	android.hardware.vibrator@1.0-impl \
+	android.hardware.vibrator@1.0-service \
+	android.hardware.wifi@1.0-service \
+	android.system.net.netd@1.0
+
+# Performance
+PRODUCT_PROPERTY_OVERRIDES += \
+	sys.use_fifo_ui=1
+
 # Lights
 PRODUCT_PACKAGES += \
     lights.sc8830
 
 PRODUCT_PACKAGES += \
     libsprd_agps_agent
+
+# Sensors
+PRODUCT_PACKAGES += \
+	sensors.sc8830
 
 #trustzone
 PRODUCT_PACKAGES += \
@@ -179,7 +213,11 @@ PRODUCT_PACKAGES += \
 # Wifi
 PRODUCT_PACKAGES += \
     wpa_supplicant \
-    hostapd
+    hostapd \
+	libandroid_net \
+	libwpa_client \
+	wificond \
+	wifilogd
 
 # Permissions
 PERMISSION_XML_FILES := \
@@ -204,8 +242,34 @@ PERMISSION_XML_FILES := \
     frameworks/native/data/etc/android.software.midi.xml
 
 PRODUCT_COPY_FILES += \
-    $(foreach f,$(PERMISSION_XML_FILES),$(f):system/etc/permissions/$(notdir $(f)))
+    $(foreach f,$(PERMISSION_XML_FILES),$(f):$(TARGET_COPY_OUT_SYSTEM)/etc/permissions/$(notdir $(f)))
+
+# Disable treble OMX
+PRODUCT_PROPERTY_OVERRIDES += \
+	persist.media.treble_omx=false
+
+PRODUCT_PROPERTY_OVERRIDES += \
+	persist.sys.usb.config=mtp,adb
+
+# ART device props
+PRODUCT_PROPERTY_OVERRIDES += \
+	dalvik.vm.dex2oat-flags=--no-watch-dog \
+	dalvik.vm.image-dex2oat-filter=quicken \
+	dalvik.vm.dex2oat-filter=quicken \
+	pm.dexopt.first-boot=quicken \
+	pm.dexopt.boot=verify \
+	pm.dexopt.install=verify \
+	pm.dexopt.bg-dexopt=quicken \
+	pm.dexopt.ab-ota=quicken \
+	pm.dexopt.inactive=verify \
+	pm.dexopt.shared=quicken
+
 
 # Dalvik Heap config
-include frameworks/native/build/tablet-7in-hdpi-1024-dalvik-heap.mk
+include frameworks/native/build/tablet-7in-hdpi-512-dalvik-heap.mk
 
+# Android Go
+PRODUCT_PROPERTY_OVERRIDES += \
+	ro.config.low_ram=false
+
+$(call inherit-product, build/target/product/go_defaults_512.mk)

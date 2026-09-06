@@ -26,7 +26,7 @@ on boot
     chmod 660 /proc/bluetooth/sleep/btwrite
     chown bluetooth bluetooth /sys/class/rfkill/rfkill0/state
     chown bluetooth bluetooth /sys/class/rfkill/rfkill0/type
-    chown bluetooth net_bt_stack /dev/ttyS0
+    chown bluetooth bluetooth /dev/ttyS0
 #for Bluesleep
         chown bluetooth system /proc/bluetooth/sleep/proto
         chown bluetooth system /proc/bluetooth/sleep/btwrite

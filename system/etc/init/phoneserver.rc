@@ -1,4 +1,4 @@
-service phoneserver_w /system/bin/phoneserver -m w
+service phoneserver_w /system/vendor/bin/phoneserver -m w
     class core
     user root
     group radio system shell dhcp

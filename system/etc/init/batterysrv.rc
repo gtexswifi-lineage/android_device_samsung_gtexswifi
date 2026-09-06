@@ -1,4 +1,4 @@
-service batterysrv /system/bin/batterysrv
+service batterysrv /system/vendor/bin/batterysrv
     class core
     user system
     group system

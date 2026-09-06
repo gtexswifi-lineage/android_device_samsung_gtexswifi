@@ -52,23 +52,7 @@
     </string-array>
 
 
-    <!-- Array of ConnectivityManager.TYPE_xxxx values allowable for tethering -->
-    <!-- Common options are [1, 4] for TYPE_WIFI and TYPE_MOBILE_DUN or
-    <!== [0,1,5,7] for TYPE_MOBILE, TYPE_WIFI, TYPE_MOBILE_HIPRI and TYPE_BLUETOOTH -->
-    <integer-array translatable="false" name="config_tether_upstream_types">
-        <item>0</item>
-        <item>1</item>
-	<item>4</item>
-        <item>5</item>
-        <item>6</item>
-        <item>7</item>
-        <item>100</item>
-        <item>104</item>
-	<item>105</item>
-        <item>200</item>
-        <item>204</item>
-	<item>205</item>
-    </integer-array>
+    <!-- integer name="config_buttonBrightnessSettingDefault">0</integer -->
 
     <!-- Whether WiFi display is supported by this device.
          There are many prerequisites for this feature to work correctly.
@@ -87,37 +71,9 @@
     <!-- Indicate whether the SD card is accessible without removing the battery. -->
     <bool name="config_batterySdCardAccessibility">true</bool>
 
-    <!-- Hardware keys present on the device, stored as a bit field.
-         This integer should equal the sum of the corresponding value for each
-         of the following keys present:
-             1 - Home
-             2 - Back
-             4 - Menu
-             8 - Assistant (search)
-            16 - App switch
-            32 - Camera
-            64 - Volume rocker
-         For example, a device with Home, Back and Menu keys would set this
-         config to 7. -->
-    <integer name="config_deviceHardwareKeys">83</integer>
+    <!-- integer name="config_deviceHardwareKeys">83</integer> -->
 
-     <!-- Hardware keys present on the device with the ability to wake, stored as a bit field.
-          This integer should equal the sum of the corresponding value for each
-          of the following keys present:
-              1 - Home
-              2 - Back
-              4 - Menu
-              8 - Assistant (search)
-             16 - App switch
-             32 - Camera
-             64 - Volume rocker
-          For example, a device with Home, Back and Menu keys would set this
-          config to 7. -->
-    <integer name="config_deviceHardwareWakeKeys">65</integer>
-
-
-    <!-- Boolean to enable stk functionality on Samsung phones -->
-    <bool name="config_samsung_stk">true</bool>
+     <!-- integer name="config_deviceHardwareWakeKeys">65</integer> -->
 
     <!-- Flag indicating whether the current device is "voice capable".
          If true, this means that the device supports circuit-switched
@@ -146,4 +102,7 @@
 
      <!-- Indicates whether round icons should be parsed from the application manifest. -->
      <bool name="config_useRoundIcon">true</bool>
+	 <!-- Boolean indicating whether the HWC setColorTransform function can be performed efficiently
+         in hardware. -->
+	 <bool name="config_setColorTransformAccelerated">true</bool>
 </resources>

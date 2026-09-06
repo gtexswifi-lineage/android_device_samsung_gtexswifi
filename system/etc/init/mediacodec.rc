@@ -1,4 +1,4 @@
-service mediacodec /system/bin/mediacodec
+service mediacodec /system/vendor/bin/mediacodec
     class main
     user mediacodec
     group camera drmrpc mediadrm audio

@@ -71,6 +71,9 @@ BOARD_USES_TINYALSA_AUDIO := true
 BOARD_USES_SS_VOIP := true
 BOARD_USE_LIBATCHANNEL_WRAPPER := true
 
+# HIDL
+DEVICE_MANIFEST_FILE := device/samsung/gtexswifi/configs/manifest.xml
+
 # something
 BOARD_NEEDS_MEMORYHEAPION_SPRD := true
 
@@ -106,7 +109,14 @@ USE_SPRD_HWCOMPOSER := true
 USE_OVERLAY_COMPOSER_GPU := true
 TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS := true
 
-BOARD_GLOBAL_CFLAGS += -DDISABLE_ASHMEM_TRACKING
+TARGET_DISABLE_ASHMEM_TRACKING := true
+
+# Enable dex-preoptimization to speed up first boot sequence
+WITH_DEXPREOPT := true
+WITH_DEXPREOPT_BOOT_IMG_AND_SYSTEM_SERVER_ONLY := true
+PRODUCT_DEX_PREOPT_BOOT_FLAGS += --compiler-filter=speed
+PRODUCT_SYSTEM_SERVER_COMPILER_FILTER := speed
+WITH_DEX_PREOPT_GENERATE_PROFILE := false
 
 # Bluetooth
 USE_BLUETOOTH_BCM4343 := true
@@ -143,8 +153,11 @@ BOARD_CHARGING_MODE_BOOTING_LPM := /sys/class/power_supply/battery/batt_lp_charg
 ENABLE_WEBGL := true
 
 # SELinux
-BOARD_SEPOLICY_DIRS += device/samsung/gtexswifi/sepolicy
-SERVICES_WITHOUT_SELINUX_DOMAIN := true
+#BOARD_SEPOLICY_DIRS += device/samsung/gtexswifi/sepolicy
+#SERVICES_WITHOUT_SELINUX_DOMAIN := true
+
+# Sensors
+TARGET_USES_SENSORS_WRAPPER := true
 
 # Camera
 #zsl capture
