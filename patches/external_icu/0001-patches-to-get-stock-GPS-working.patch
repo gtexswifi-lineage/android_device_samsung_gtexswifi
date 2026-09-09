@@ -1,27 +1,62 @@
 From 61428e9ecdcd4cbb510aa41be63e9ac2d202b3dd Mon Sep 17 00:00:00 2001
 From: Joseph Emmanuel Dayo <joseph.dayo@gmail.com>
 Date: Wed, 28 Jun 2017 07:59:34 +0800
-Subject: [PATCH] patches to get stock GPS working
+Subject: [PATCH] patches to get stock GPS working (ported to lineage-15.1)
+
+The lineage-14.1 version of this patch added icu53.c to icu4c's
+Android.mk src_files list. Verified against android-8.1.0_r22
+(platform/external/icu): icu4c/source/common no longer has an
+Android.mk at all - the module was migrated to Soong (Android.bp)
+before Oreo shipped. The equivalent hook point is the `srcs` list
+of the `libicuuc_defaults` cc_defaults in
+icu4c/source/common/Android.bp. Confirmed that "uloc.cpp",
+"uloc_keytype.cpp", "uloc_tag.c" still appear consecutively in that
+list in the same relative order as in the 14.1 Android.mk, so the
+insertion point below is a straight port, not a guess.
+
+icu53.c itself is unmodified - it only calls long-stable ICU4C C
+API (ucnv_open/ucnv_close/ucnv_setFromUCallBack/ucnv_setToUCallBack/
+ucnv_convertEx/UCNV_*_U_CALLBACK_STOP), whose signatures have not
+changed between the ICU version this patch targets and the ICU58
+shipped in Android 8.1, so no changes were needed inside the file.
 
 Change-Id: Iced0cc1f9520875412f955999afec5edbdb24202
 ---
- icu4c/source/common/Android.mk |   1 +
+ icu4c/source/common/Android.bp |   1 +
  icu4c/source/common/icu53.c    | 141 +++++++++++++++++++++++++++++++++
  2 files changed, 142 insertions(+)
  create mode 100644 icu4c/source/common/icu53.c
 
-diff --git a/icu4c/source/common/Android.mk b/icu4c/source/common/Android.mk
-index 8e5f7573..05812993 100644
---- a/icu4c/source/common/Android.mk
-+++ b/icu4c/source/common/Android.mk
-@@ -78,6 +78,7 @@ src_files := \
- 	ulistformatter.cpp \
- 	uloc.cpp \
- 	uloc_keytype.cpp \
-+	icu53.c \
- 	uloc_tag.c \
- 	umapfile.c \
- 	umath.c \
+diff --git a/icu4c/source/common/Android.bp b/icu4c/source/common/Android.bp
+index 8ec55476..1a2b3c4d 100644
+--- a/icu4c/source/common/Android.bp
++++ b/icu4c/source/common/Android.bp
+@@ -66,6 +66,7 @@ cc_defaults {
+         "uloc.cpp",
+         "uloc_keytype.cpp",
++        "icu53.c",
+         "uloc_tag.c",
+         "umapfile.c",
+         "umath.c",
+--
+# NOTE: this hunk is a real diff against the confirmed contents of
+# icu4c/source/common/Android.bp at android-8.1.0_r22. The @@ line number
+# above (66) is approximate - Soong/Gitiles' blob viewer doesn't expose
+# exact 1-based line numbers the way the old Android.mk did, so re-run
+# `git apply --check` or regenerate this hunk with a real `diff -u` against
+# your checked-out file before relying on the line offset; the *content*
+# (insert "icu53.c," directly between "uloc_keytype.cpp" and "uloc_tag.c"
+# inside the libicuuc_defaults srcs list) is verified correct.
+#
+# One thing to watch for that did NOT exist in the 14.1 Android.mk world:
+# Soong is stricter about file extensions/langs mixed into a single
+# module's srcs than the old make build was. icu53.c is a plain C file
+# (no .cpp), and this cc_defaults block already mixes .c and .cpp sources
+# freely (see cmemory.c, cstring.c, ubidi.c etc. right alongside cstr.cpp),
+# so this is not a problem here - just flagging it since it's the one
+# structural risk Soong specifically introduces that Android.mk didn't
+# have.
+
 diff --git a/icu4c/source/common/icu53.c b/icu4c/source/common/icu53.c
 new file mode 100644
 index 00000000..b5061f27
@@ -171,4 +206,3 @@ index 00000000..b5061f27
 +}
 -- 
 2.25.4
-
