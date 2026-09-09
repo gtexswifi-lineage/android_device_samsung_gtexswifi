@@ -1,118 +1,112 @@
-From 5c133e1cdabdbec980fee53a489907ce8d53b72e Mon Sep 17 00:00:00 2001
-From: Joseph Emmanuel Dayo <joseph.dayo@gmail.com>
-Date: Wed, 28 Jun 2017 06:45:40 +0800
-Subject: [PATCH] Add SPRD media patches
+From 09c53f79825e89fefef762ff8d69a325b66ce271 Mon Sep 17 00:00:00 2001
+From: Patch Bot <patch@example.com>
+Date: Wed, 9 Sep 2026 18:08:52 +0000
+Subject: [PATCH] Add SPRD media patches (lineage-15.1)
 
-Change-Id: I76566a2c99db5a42d5eefbb6d4e884f894141ef2
+Rebase of the lineage-14.1 SPRD VSP 1080i interlaced-video patch onto
+lineage-15.1 frameworks/av. Adapted for:
+- media/libstagefright and media/libstagefright/omx now building via
+  Android.bp (Soong) instead of Android.mk; CONFIG_VSP_SUPPORT_1080I is
+  now applied unconditionally via cflags in those two Android.bp files
+  instead of being gated by BOARD_VSP_SUPPORT_1080I (Soong has no direct
+  view of Make board-config variables without extra vendor/lineage
+  plumbing).
+- NuPlayer::Decoder::onConfigure()'s decoder-creation logic was
+  simplified upstream (legacy AVUtils/FFMPEGSoftCodec hooks removed);
+  the interlace branch now wraps the current MediaCodec::CreateByType/
+  CreateByComponentName calls, including the mUid parameter they now
+  take.
+- StagefrightMetadataRetriever's extractVideoFrame() single-IDR-frame
+  shortcut is now gated by decodeSingleFrame instead of
+  !isSeekingClosest; added !isInterlaceFrame to that condition instead.
+  Added an explicit ABuffer.h include (previously only forward-declared
+  via AMessage.h) needed for sps->data()/size().
+- include/media/stagefright/MediaCodec.h is now a symlink into
+  media/libstagefright/include/...; patch retargeted to the real path.
+
+Change-Id: I76566a2c99db5a42d5eefbb6d4e884f894141ef2-lineage151
 ---
- include/media/stagefright/MediaCodec.h        |   1 +
  .../libmediaplayerservice/nuplayer/Android.mk |   5 +
- .../nuplayer/NuPlayerDecoder.cpp              |  27 +
+ .../nuplayer/NuPlayerDecoder.cpp              |  17 +
  .../nuplayer/avc_utils_sprd.cpp               | 560 ++++++++++++++++++
  .../nuplayer/avc_utils_sprd.h                 |  23 +
- media/libstagefright/Android.mk               |   5 +
+ media/libstagefright/Android.bp               |   3 +
  media/libstagefright/MPEG4Extractor.cpp       |   3 +
- .../StagefrightMetadataRetriever.cpp          |  15 +-
+ .../StagefrightMetadataRetriever.cpp          |  18 +-
  media/libstagefright/avc_utils_sprd.cpp       | 560 ++++++++++++++++++
  media/libstagefright/include/avc_utils_sprd.h |  23 +
- media/libstagefright/omx/Android.mk           |   4 +
+ .../include/media/stagefright/MediaCodec.h    |   1 +
+ media/libstagefright/omx/Android.bp           |   2 +
  media/libstagefright/omx/OMXMaster.cpp        |   3 +
- 12 files changed, 1228 insertions(+), 1 deletion(-)
+ 12 files changed, 1217 insertions(+), 1 deletion(-)
  create mode 100644 media/libmediaplayerservice/nuplayer/avc_utils_sprd.cpp
  create mode 100644 media/libmediaplayerservice/nuplayer/avc_utils_sprd.h
  create mode 100644 media/libstagefright/avc_utils_sprd.cpp
  create mode 100644 media/libstagefright/include/avc_utils_sprd.h
 
-diff --git a/include/media/stagefright/MediaCodec.h b/include/media/stagefright/MediaCodec.h
-index 05f65819f..80fc6bdd5 100644
---- a/include/media/stagefright/MediaCodec.h
-+++ b/include/media/stagefright/MediaCodec.h
-@@ -46,6 +46,7 @@ class Surface;
- struct MediaCodec : public AHandler {
-     enum ConfigureFlags {
-         CONFIGURE_FLAG_ENCODE   = 1,
-+        CONFIGURE_FLAG_THUMBNAIL = 2,
-     };
- 
-     enum BufferFlags {
 diff --git a/media/libmediaplayerservice/nuplayer/Android.mk b/media/libmediaplayerservice/nuplayer/Android.mk
-index df89d77d9..a5e5ab433 100644
+index c582631..ab5f486 100644
 --- a/media/libmediaplayerservice/nuplayer/Android.mk
 +++ b/media/libmediaplayerservice/nuplayer/Android.mk
-@@ -27,6 +27,7 @@ LOCAL_SRC_FILES:=                       \
+@@ -15,6 +15,7 @@ LOCAL_SRC_FILES:=                       \
          NuPlayerStreamListener.cpp      \
          RTSPSource.cpp                  \
          StreamingSource.cpp             \
 +        avc_utils_sprd.cpp              \
  
  LOCAL_C_INCLUDES := \
- 	$(TOP)/frameworks/av/media/libstagefright                     \
-@@ -52,6 +53,10 @@ ifeq ($(strip $(DOLBY_ENABLE)),true)
+ 	frameworks/av/media/libstagefright                     \
+@@ -33,6 +34,10 @@ ifneq (,$(filter userdebug eng,$(TARGET_BUILD_VARIANT)))
+ LOCAL_CFLAGS += -DENABLE_STAGEFRIGHT_EXPERIMENTS
  endif
- # DOLBY_END
  
 +ifeq ($(strip $(BOARD_VSP_SUPPORT_1080I)),true)
 +LOCAL_CFLAGS += -DCONFIG_VSP_SUPPORT_1080I
 +endif
 +
- LOCAL_CLANG := true
- 
- LOCAL_MODULE:= libstagefright_nuplayer
+ LOCAL_SHARED_LIBRARIES :=       \
+     libbinder                   \
+     libui                       \
 diff --git a/media/libmediaplayerservice/nuplayer/NuPlayerDecoder.cpp b/media/libmediaplayerservice/nuplayer/NuPlayerDecoder.cpp
-index 5537ab0f5..924e0721f 100644
+index ac187cc..0a92669 100644
 --- a/media/libmediaplayerservice/nuplayer/NuPlayerDecoder.cpp
 +++ b/media/libmediaplayerservice/nuplayer/NuPlayerDecoder.cpp
-@@ -64,6 +64,11 @@
- 
+@@ -43,6 +43,10 @@
  #include "avc_utils.h"
  #include "ATSParser.h"
-+
+ 
 +#ifdef CONFIG_VSP_SUPPORT_1080I
 +#include "avc_utils_sprd.h"
 +#endif
 +
- #ifdef DOLBY_ENABLE
- #include "DolbyNuPlayerDecoderExtImpl.h"
- #endif // DOLBY_END
-@@ -291,6 +296,13 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
+ namespace android {
+ 
+ static float kDisplayRefreshingRate = 60.f; // TODO: get this from the display
+@@ -293,8 +297,21 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
      mComponentName.append(" decoder");
      ALOGV("[%s] onConfigure (surface=%p)", mComponentName.c_str(), mSurface.get());
  
 +#ifdef CONFIG_VSP_SUPPORT_1080I
 +    sp<ABuffer> sps;
-+    if (mIsVideoAVC && format->findBuffer("csd-0", &sps) && (isInterlacedSequence(sps->data(), sps->size()) == 1)) {
-+            ALOGI("interlace avc stream, create vpu decoder");
-+            mCodec = MediaCodec::CreateByComponentName(mCodecLooper,
-+                             "OMX.vpu.video_decoder.avc", NULL /* err */, mPid);
++    if (mIsVideoAVC && format->findBuffer("csd-0", &sps) &&
++            (isInterlacedSequence(sps->data(), sps->size()) == 1)) {
++        ALOGI("interlace avc stream, create vpu decoder");
++        mCodec = MediaCodec::CreateByComponentName(mCodecLooper,
++                "OMX.vpu.video_decoder.avc", NULL /* err */, mPid, mUid);
 +    } else {
-     mCodec = AVUtils::get()->createCustomComponentByName(mCodecLooper, mime.c_str(), false /* encoder */, format);
-     FFMPEGSoftCodec::overrideComponentName(0, format, &mComponentName, &mime, false);
- 
-@@ -303,6 +315,21 @@ void NuPlayer::Decoder::onConfigure(const sp<AMessage> &format) {
-                     mCodecLooper, mime.c_str(), false /* encoder */, NULL /* err */, mPid);
-         }
-     }
-+}
++        mCodec = MediaCodec::CreateByType(
++                mCodecLooper, mime.c_str(), false /* encoder */, NULL /* err */, mPid, mUid);
++    }
 +#else
-+   mCodec = AVUtils::get()->createCustomComponentByName(mCodecLooper, mime.c_str(), false /* encoder */, format);
-+    FFMPEGSoftCodec::overrideComponentName(0, format, &mComponentName, &mime, false);
-+
-+    if (mCodec == NULL) {
-+        if (!mComponentName.startsWith(mime.c_str())) {
-+            mCodec = MediaCodec::CreateByComponentName(
-+                    mCodecLooper, mComponentName.c_str(), NULL, mPid);
-+        } else {
-+            mCodec = MediaCodec::CreateByType(
-+                    mCodecLooper, mime.c_str(), false /* encoder */, NULL /* err */, mPid);
-+        }
-+     }
+     mCodec = MediaCodec::CreateByType(
+             mCodecLooper, mime.c_str(), false /* encoder */, NULL /* err */, mPid, mUid);
 +#endif
- 
      int32_t secure = 0;
      if (format->findInt32("secure", &secure) && secure != 0) {
+         if (mCodec != NULL) {
 diff --git a/media/libmediaplayerservice/nuplayer/avc_utils_sprd.cpp b/media/libmediaplayerservice/nuplayer/avc_utils_sprd.cpp
 new file mode 100644
-index 000000000..3ecdb6f20
+index 0000000..3ecdb6f
 --- /dev/null
 +++ b/media/libmediaplayerservice/nuplayer/avc_utils_sprd.cpp
 @@ -0,0 +1,560 @@
@@ -678,7 +672,7 @@ index 000000000..3ecdb6f20
 +}
 diff --git a/media/libmediaplayerservice/nuplayer/avc_utils_sprd.h b/media/libmediaplayerservice/nuplayer/avc_utils_sprd.h
 new file mode 100644
-index 000000000..dbb030046
+index 0000000..dbb0300
 --- /dev/null
 +++ b/media/libmediaplayerservice/nuplayer/avc_utils_sprd.h
 @@ -0,0 +1,23 @@
@@ -705,34 +699,32 @@ index 000000000..dbb030046
 +int isInterlacedSequence(const unsigned char *bitstrm_ptr, size_t bitstrm_len);
 +
 +#endif
-diff --git a/media/libstagefright/Android.mk b/media/libstagefright/Android.mk
-index e708f68ae..505efcb3a 100644
---- a/media/libstagefright/Android.mk
-+++ b/media/libstagefright/Android.mk
-@@ -77,6 +77,7 @@ LOCAL_SRC_FILES:=                         \
-         WVMExtractor.cpp                  \
-         XINGSeeker.cpp                    \
-         avc_utils.cpp                     \
-+	avc_utils_sprd.cpp                \
-         FFMPEGSoftCodec.cpp               \
+diff --git a/media/libstagefright/Android.bp b/media/libstagefright/Android.bp
+index c8d4e4a..7492012 100644
+--- a/media/libstagefright/Android.bp
++++ b/media/libstagefright/Android.bp
+@@ -68,6 +68,7 @@ cc_library_shared {
+         "WAVExtractor.cpp",
+         "XINGSeeker.cpp",
+         "avc_utils.cpp",
++        "avc_utils_sprd.cpp",
+     ],
  
- LOCAL_C_INCLUDES:= \
-@@ -188,6 +189,10 @@ endif
- LOCAL_CLANG := true
- LOCAL_SANITIZE := unsigned-integer-overflow signed-integer-overflow
+     shared_libs: [
+@@ -139,6 +140,8 @@ cc_library_shared {
+         "-Werror",
+         "-Wno-error=deprecated-declarations",
+         "-Wall",
++        // SPRD VSP 1080i interlaced-decode support (see avc_utils_sprd.cpp)
++        "-DCONFIG_VSP_SUPPORT_1080I",
+     ],
  
-+ifeq ($(strip $(BOARD_VSP_SUPPORT_1080I)),true)
-+LOCAL_CFLAGS += -DCONFIG_VSP_SUPPORT_1080I
-+endif
-+
- # FFMPEG plugin
- LOCAL_C_INCLUDES += $(TOP)/external/stagefright-plugins/include
- 
+     product_variables: {
 diff --git a/media/libstagefright/MPEG4Extractor.cpp b/media/libstagefright/MPEG4Extractor.cpp
-index c43f548e4..7a8a177c2 100644
+index 17b1934..c21b07b 100644
 --- a/media/libstagefright/MPEG4Extractor.cpp
 +++ b/media/libstagefright/MPEG4Extractor.cpp
-@@ -1644,6 +1644,9 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
+@@ -1529,6 +1529,9 @@ status_t MPEG4Extractor::parseChunk(off64_t *offset, int depth) {
          case FOURCC('a', 'v', 'c', '1'):
          case FOURCC('h', 'v', 'c', '1'):
          case FOURCC('h', 'e', 'v', '1'):
@@ -743,12 +735,20 @@ index c43f548e4..7a8a177c2 100644
              uint8_t buffer[78];
              if (chunk_data_size < (ssize_t)sizeof(buffer)) {
 diff --git a/media/libstagefright/StagefrightMetadataRetriever.cpp b/media/libstagefright/StagefrightMetadataRetriever.cpp
-index f00b8b7c4..0763854a0 100644
+index e8c3dd3..90637f6 100644
 --- a/media/libstagefright/StagefrightMetadataRetriever.cpp
 +++ b/media/libstagefright/StagefrightMetadataRetriever.cpp
-@@ -50,6 +50,10 @@
+@@ -29,6 +29,7 @@
+ #include <media/IMediaHTTPService.h>
+ #include <media/MediaCodecBuffer.h>
  
- #include <stagefright/AVExtensions.h>
++#include <media/stagefright/foundation/ABuffer.h>
+ #include <media/stagefright/foundation/ADebug.h>
+ #include <media/stagefright/foundation/AMessage.h>
+ #include <media/stagefright/ColorConverter.h>
+@@ -46,6 +47,10 @@
+ 
+ #include <media/CharacterEncodingDetector.h>
  
 +#ifdef CONFIG_VSP_SUPPORT_1080I
 +#include "include/avc_utils_sprd.h"
@@ -757,34 +757,36 @@ index f00b8b7c4..0763854a0 100644
  namespace android {
  
  static const int64_t kBufferTimeOutUs = 30000ll; // 30 msec
-@@ -265,6 +269,15 @@ static VideoFrame *extractVideoFrame(
- 
+@@ -394,6 +399,17 @@ static VideoFrame *extractVideoFrame(
      bool firstSample = true;
      int64_t targetTimeUs = -1ll;
-+bool isInterlaceFrame = false;
+ 
++    bool isInterlaceFrame = false;
 +#ifdef CONFIG_VSP_SUPPORT_1080I
-+    bool isVideoAVC = !strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC,mime);
++    bool isVideoAVC = !strcasecmp(mime, MEDIA_MIMETYPE_VIDEO_AVC);
 +    sp<ABuffer> sps;
-+    if (isVideoAVC && videoFormat->findBuffer("csd-0", &sps) && (isInterlacedSequence(sps->data(), sps->size()) == 1)) {
++    if (isVideoAVC && videoFormat->findBuffer("csd-0", &sps) &&
++            (isInterlacedSequence(sps->data(), sps->size()) == 1)) {
 +        ALOGI("interlace avc stream, more inputs");
 +        isInterlaceFrame = true;
 +    }
 +#endif
++
+     VideoFrame *frame = NULL;
+     int32_t tilesDecoded = 0;
  
-     do {
-         size_t inputIndex = -1;
-@@ -309,7 +322,7 @@ static VideoFrame *extractVideoFrame(
-                 memcpy(codecBuffer->data(),
-                         (const uint8_t*)mediaBuffer->data() + mediaBuffer->range_offset(),
-                         mediaBuffer->range_length());
--                if (isAvcOrHevc && IsIDR(codecBuffer) && !isSeekingClosest) {
-+                if (isAvcOrHevc && IsIDR(codecBuffer) && !isSeekingClosest && !isInterlaceFrame) {
-                     // Only need to decode one IDR frame, unless we're seeking with CLOSEST
-                     // option, in which case we need to actually decode to targetTimeUs.
-                     haveMoreInputs = false;
+@@ -451,7 +467,7 @@ static VideoFrame *extractVideoFrame(
+         }
+ 
+         if (haveMoreInputs && inputIndex < inputBuffers.size()) {
+-            if (isAvcOrHevc && IsIDR(codecBuffer) && decodeSingleFrame) {
++            if (isAvcOrHevc && IsIDR(codecBuffer) && decodeSingleFrame && !isInterlaceFrame) {
+                 // Only need to decode one IDR frame, unless we're seeking with CLOSEST
+                 // option, in which case we need to actually decode to targetTimeUs.
+                 haveMoreInputs = false;
 diff --git a/media/libstagefright/avc_utils_sprd.cpp b/media/libstagefright/avc_utils_sprd.cpp
 new file mode 100644
-index 000000000..107688669
+index 0000000..d398543
 --- /dev/null
 +++ b/media/libstagefright/avc_utils_sprd.cpp
 @@ -0,0 +1,560 @@
@@ -1282,7 +1284,7 @@ index 000000000..107688669
 +    }
 +    declen -= startCode_len;
 +
-+    if ((unsigned long)declen >= frm_bs_len)
++    if ((unsigned int)declen >= frm_bs_len)
 +    {
 +//		declen = 0;
 +//		s_bFisrtUnit = TRUE;
@@ -1350,7 +1352,7 @@ index 000000000..107688669
 +}
 diff --git a/media/libstagefright/include/avc_utils_sprd.h b/media/libstagefright/include/avc_utils_sprd.h
 new file mode 100644
-index 000000000..6e6a6e51a
+index 0000000..6e6a6e5
 --- /dev/null
 +++ b/media/libstagefright/include/avc_utils_sprd.h
 @@ -0,0 +1,23 @@
@@ -1377,26 +1379,36 @@ index 000000000..6e6a6e51a
 +int isInterlacedSequence(const unsigned char *bitstrm_ptr, size_t bitstrm_len);
 +
 +#endif
-diff --git a/media/libstagefright/omx/Android.mk b/media/libstagefright/omx/Android.mk
-index 1b0e99691..49434aa42 100644
---- a/media/libstagefright/omx/Android.mk
-+++ b/media/libstagefright/omx/Android.mk
-@@ -44,6 +44,10 @@ LOCAL_SHARED_LIBRARIES :=               \
-         libstagefright_foundation       \
-         libdl
+diff --git a/media/libstagefright/include/media/stagefright/MediaCodec.h b/media/libstagefright/include/media/stagefright/MediaCodec.h
+index 1030407..193bf9c 100644
+--- a/media/libstagefright/include/media/stagefright/MediaCodec.h
++++ b/media/libstagefright/include/media/stagefright/MediaCodec.h
+@@ -58,6 +58,7 @@ using hardware::cas::native::V1_0::IDescrambler;
+ struct MediaCodec : public AHandler {
+     enum ConfigureFlags {
+         CONFIGURE_FLAG_ENCODE   = 1,
++        CONFIGURE_FLAG_THUMBNAIL = 2,
+     };
  
-+ifeq ($(strip $(BOARD_VSP_SUPPORT_1080I)),true)
-+LOCAL_CFLAGS += -DCONFIG_VSP_SUPPORT_1080I
-+endif
-+
- ifeq ($(call is-vendor-board-platform,QCOM),true)
- ifeq ($(strip $(AUDIO_FEATURE_ENABLED_EXTN_FLAC_DECODER)),true)
- LOCAL_CFLAGS += -DQTI_FLAC_DECODER
+     enum BufferFlags {
+diff --git a/media/libstagefright/omx/Android.bp b/media/libstagefright/omx/Android.bp
+index 1a00fb9..fe5ed3b 100644
+--- a/media/libstagefright/omx/Android.bp
++++ b/media/libstagefright/omx/Android.bp
+@@ -77,6 +77,8 @@ cc_library_shared {
+         "-Wall",
+         "-Wno-unused-parameter",
+         "-Wno-documentation",
++        // SPRD VSP 1080i interlaced-decode support
++        "-DCONFIG_VSP_SUPPORT_1080I",
+     ],
+ 
+     product_variables: {
 diff --git a/media/libstagefright/omx/OMXMaster.cpp b/media/libstagefright/omx/OMXMaster.cpp
-index 2d2d50028..6fa9601bd 100644
+index fd97fdc..41f5622 100644
 --- a/media/libstagefright/omx/OMXMaster.cpp
 +++ b/media/libstagefright/omx/OMXMaster.cpp
-@@ -64,6 +64,9 @@ OMXMaster::~OMXMaster() {
+@@ -63,6 +63,9 @@ OMXMaster::~OMXMaster() {
  }
  
  void OMXMaster::addVendorPlugin() {
@@ -1407,5 +1419,4 @@ index 2d2d50028..6fa9601bd 100644
  }
  
 -- 
-2.25.4
-
+2.43.0
