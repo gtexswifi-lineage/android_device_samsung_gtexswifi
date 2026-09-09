@@ -266,10 +266,4 @@ PRODUCT_PROPERTY_OVERRIDES += \
 
 
 # Dalvik Heap config
-include frameworks/native/build/tablet-7in-hdpi-512-dalvik-heap.mk
-
-# Android Go
-PRODUCT_PROPERTY_OVERRIDES += \
-	ro.config.low_ram=false
-
-$(call inherit-product, build/target/product/go_defaults_512.mk)
+include frameworks/native/build/tablet-7in-hdpi-1024-dalvik-heap.mk
